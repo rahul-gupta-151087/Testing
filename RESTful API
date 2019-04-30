@@ -1,0 +1,138 @@
+#RESTful API which provides a service for storing,updating,retreiving and deleting Person entities 
+#written in node.js
+
+#In services/router.js file
+
+router.route('/persons/:id?')
+  .get(persons.get)
+  .post(persons.post)
+  .put(persons.put)
+  .delete(persons.delete);
+  
+    
+#Handling POST Requests
+
+function getPersonFromRec(req) {
+  const person = {
+    first_name: req.body.first_name,
+    last_name: req.body.last_name,
+    age: req.body.age,
+    favorite_color: req.body.favorite_color
+  };
+  return person;
+}
+async function post(req, res, next) {
+  try {
+    let person = getPersonFromRec(req);
+    person = await persons.create(person);
+    res.status(201).json(person);
+  } catch (err) {
+    next(err);
+  }
+}
+module.exports.post = post;
+
+#For DB Connection:
+const createSql =
+ `insert into persons (
+    first_name,
+    last_name,
+    age,
+    favorite_color
+  ) values (
+    :first_name,
+    :last_name,
+    :age,
+    :favorite_color
+  ) returning person_id
+  into :person_id`;
+  
+async function create(emp) {
+  const person = Object.assign({}, emp);
+  person.person_id = {
+    dir: oracledb.BIND_OUT,
+    type: oracledb.NUMBER
+  }
+  const result = await database.simpleExecute(createSql, person);
+  person.person_id = result.outBinds.person_id[0];
+  return person;
+}
+module.exports.create = create;
+
+
+#Handling PUT Request
+
+async function put(req, res, next) {
+  try {
+    let person = getPersonFromRec(req);
+    person.person_id = parseInt(req.params.id, 10);
+    person = await persons.update(person);
+    if (person !== null) {
+      res.status(200).json(person);
+    } else {
+      res.status(404).end();
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+module.exports.put = put;
+
+For values update to DB:
+const updateSql =
+ `update persons
+  set first_name = :first_name,
+    last_name = :last_name,
+    age = :age,
+    favorite_color = :favorite_color
+  where person_id = :person_id`;
+async function update(emp) {
+  const person = Object.assign({}, emp);
+  const result = await database.simpleExecute(updateSql, person);
+  if (result.rowsAffected === 1) {
+    return person;
+  } else {
+    return null;
+  }
+}
+module.exports.update = update;
+
+
+#Handling DELETE Request
+
+async function del(req, res, next) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const success = await persons.delete(id);
+    if (success) {
+      res.status(204).end();
+    } else {
+      res.status(404).end();
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+module.exports.delete = del;
+
+Values delete in DB:
+const deleteSql =
+ `begin
+    delete from job_history
+    where person_id = :person_id;
+    delete from persons
+    where person_id = :person_id;
+    :rowcount := sql%rowcount;
+  end;`
+async function del(id) {
+  const binds = {
+    person_id: id,
+    rowcount: {
+      dir: oracledb.BIND_OUT,
+      type: oracledb.NUMBER
+    }
+  }
+  const result = await database.simpleExecute(deleteSql, binds);
+  return result.outBinds.rowcount === 1;
+}
+module.exports.delete = del;
